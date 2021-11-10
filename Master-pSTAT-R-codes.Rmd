@@ -1,0 +1,801 @@
+---
+title: "Master pSTAT codes"
+author: "Emily Monk and David Woods"
+date: "9/29/2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+# Introducation
+
+### Code used for analyzing pSTATs:
+
+This code is broken up into sections corresponding to each experiment and graph type. 
+
+Right now this code is written to produce individual graphs outputted to a figures folder, as well as the markdown document. However, there is commented out code to save individual plots/sets of plots as pdf documents. To do this, remove the # for the pdf function, as well as for dev.off() below the graphing function, and then run the code.
+
+It is also important to note that most graphs were polished in Illustrator.
+
+This code can be run with the data in our experiments without changing anything.
+
+This code can also be used with similar data by changing parameters specified in each code chunk. 
+
+```{r}
+#setwd("~/The University of Colorado Denver/SciOmics Lab - Documents/Projects/pSTAT/Manuscript/Data for R code")
+```
+
+```{r, global-options, include=FALSE}
+knitr::opts_chunk$set(fig.width=4, fig.height=4, fig.path='Figs/')
+#, dev = "pdf" adding this makes the plot output within the file pdf's.
+#The rainbow cloud plots take a long time to render as pdf's due to the number of plotted points,
+#therefore we recommend knitting the entire file as png and saving individual plots as pdf's as needed (use the in line commented out code).
+```
+
+These are all the packages used in this file.
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse) #commonly throughout
+library(Polychrome) #creates a color palette for bar grahps (cytokine screening)
+library(ggpubr) #stats comparisons on the cytokine screening bar graphs
+library(flowCore) #allows the import of fcs flow files
+library(kableExtra) #makes nicer looking tabular output in the knitted file
+library(knitr) #make nice knitted report output
+library(Hmisc) #used to get the p-values for the correlation matrices
+library(igraph) #visualizes the correlation networks
+```
+
+
+------
+
+# Activation Kinetics Experiment:
+
+## Activation Kinetics - Import Data and Tidy 
+
+```{r}
+#read in the data, we used an excel file here with multiple sheets
+df <- read.csv("2021 07 02 Activation Kinetics Data.csv", check.names = FALSE)
+
+#Create a new Activation Time column
+#*** May need to change these specific times depending on experiment
+df = df %>% 
+  mutate_at(vars(`Activation Type`), factor) %>% 
+  mutate(`Timepoint` = case_when(
+    `Activation Time` == "72h" ~ 72, 
+    `Activation Time` == "48h" ~ 48,
+    `Activation Time` == "24h" ~ 24,
+    `Activation Time` == "2h" ~ 2,
+    `Activation Time` == "0.5h" ~ 0.5,
+    `Activation Time` == "0h" ~ 0)) %>% 
+  unite(Row_Label, `Activation Type`:`Activation Time`, remove = FALSE)
+
+#Remove columns we are not interested in graphing
+drop_cols <- c("Live Cell Count", "Live Cell Frequency", "CD4+pSTAT1(S727)+", "CD4+pSTAT3(S727)+", "CD8+pSTAT1(S727)+", "CD8+pSTAT3(S727)+")
+df <- df[ , !(names(df) %in% drop_cols)]
+kbl(df[1:5,1:8]) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left", font_size = 10)
+
+
+#need to fix the column names because they include characters R can't parse.
+#first save the df as a new object to avoid messing anything else up:
+df_n <- df
+
+#We need to replace a space, /, parentheses with "." in the column names, 
+  ##otherwise r can't parse the text later on.
+colnames(df_n) <- gsub(" |/|[(]|[)]", '.', colnames(df_n))
+colnames(df_n) <- gsub("[-]", "neg", colnames(df_n))
+colnames(df_n) <- gsub("[\\+]", 'pos', colnames(df_n))
+colnames(df_n)
+
+#factor Activation time and type
+#*** May need to change these depending on experiment
+df_n$Activation.Time <- factor(df_n$Activation.Time, c("0h", "0.5h", "2h", "24h", "48h", "72h"))
+levels(df_n$Activation.Time)
+df_n$Activation.Type <- factor(df_n$Activation.Type, c("None", "Dynabeads (1:1)", "Dynabeads (1:10)", "ImmunoCult", "Antibodies"))
+levels(df_n$Activation.Type)
+
+```
+
+
+
+## Activation Kinetics - Line Graphs
+
+Note these graphs include a horizontal line for the "None" activation
+```{r, out.width="40%"}
+
+#specify which columns to plot
+#*** Need to change based on your data
+cols_to_plot <- colnames(df_n[,5:length(df_n)-1])
+
+#*** Need to change pdf name to save the graphs
+#pdf("Activation time graphs w hline no legend.pdf", width = 8, height = 8)
+
+for (i in seq_along(cols_to_plot)) {
+  param <- cols_to_plot[i]
+
+  #compute mean value first
+  nonedf <- dplyr::filter(df_n, Activation.Type == "None")
+  m <- mean(pull(nonedf, param))
+  
+  p <- ggplot(df_n, aes_string(x= "Activation.Time", y = param, color = "Activation.Type")) +
+  stat_summary(geom = "point", fun = "mean", size = 2) +
+  geom_line(aes(group = Activation.Type), stat = "summary", fun = mean) +
+  geom_errorbar(stat = "summary", fun.data = mean_se, width = 0.3) +
+    geom_hline(yintercept = m, linetype="dashed", color = "black") +
+  scale_color_manual(values = c("black", "red", "darkorange", "purple", "blue")) +
+  xlab("Hours") +
+  ylab("Frequency") +
+  ylim(0,100) +
+    ggtitle(param) +
+  theme_minimal() +
+    theme(legend.position = "none")
+  
+  print(p)
+}
+#dev.off()
+
+
+```
+
+
+## Activation Kinetics - Heatmap
+```{r, out.width="60%"}
+#*** Change pdf title and the columns to graph
+#pdf("Activation heatmap.pdf", width = 8, height = 8)
+heatmap(scale(as.matrix(df[4:23])), Rowv = NA, labRow = df$Row_Label, cexRow = 0.5, cexCol = 0.5)
+#dev.off()
+
+```
+
+
+## Correlation Network Functions
+
+These functions create the network from the correlation data matrices, and then graph the network.
+
+In the network, Vertices are the circles, and edges are the lines connecting the vertices. In this case, each vertex represent a marker and the edges represent the correlation between the markers they connect. These are also sometimes called nodes and links.
+
+For this correlation network, the edges are being filtered by their associated p-values, with the thickness of the line in the visualization proportional to the absolute correlation value.
+
+We recommend leaving the cor_net_f as is and changing only the function arguments, however there are graphical parameters other users may want to change in the plot_network function.
+
+```{r}
+cor_net_f <- function(corr_matrix, pvals = NULL, corr_threshold = NULL, pval_threshold = NULL, cell_type = NULL, output_file = NULL){
+  
+  rownames(corr_matrix) <- colnames(corr_matrix)
+  corr_matrix <- as.matrix(corr_matrix)
+  g <- graph_from_adjacency_matrix(corr_matrix,mode = "undirected",weighted = TRUE,diag = FALSE)
+  
+  markers <- colnames(corr_matrix)
+  
+  cell_type_local <- unlist(lapply(markers,substr,1,3))
+  marker_name <- unlist(lapply(markers,str_sub,start= 5))
+  corr_sign <- sign(get.edge.attribute(g,"weight"))
+  
+  
+  g <- set_vertex_attr(g,"cell_type",value=cell_type_local)
+  g <- set_vertex_attr(g,"marker",value=marker_name)
+  g <- set_edge_attr(g,"correlation_sign",value=corr_sign)
+  
+  if(!is.null(pvals)){
+    edge_pvals <- as.vector(t(pvals)[lower.tri(pvals, diag = FALSE)])
+    g <- set_edge_attr(g,"pval",value=edge_pvals)
+  }
+  
+  
+  if(!is.null(corr_threshold)){
+    g <- delete.edges(g, which(abs(E(g)$weight) < corr_threshold))  
+  }
+  
+  if(!is.null(pval_threshold)){
+    g <- delete.edges(g, which(abs(E(g)$pval) > pval_threshold))  
+  }
+  
+  if(!is.null(cell_type)){
+    g <- delete.vertices(g, which(V(g)$cell_type != cell_type))
+  }
+  
+  if(!is.null(output_file)){
+    write_graph(g,output_file,format="graphml")
+  }else{
+    return(g)
+  }
+  
+}
+
+plot_network <- function(g, title){
+   plot(g,
+       layout = layout_with_gem(g),
+       vertex.label = V(g)$marker,
+       vertex.label.cex = 0.5,
+       main = title,
+       margin=c(0,0,0,0),
+       asp = 4/6,
+       vertex.color = unlist(lapply(V(g)$cell_type,function(i) ifelse(i=="CD4","#6666FF","#FF9933"))),
+       vertex.label.color = "black",
+       edge.color = unlist(lapply(E(g)$correlation_sign,function(i) ifelse(i>0,"#0066CC","#CC0033"))),
+       edge.width = abs(E(g)$weight)*5
+  )
+}
+
+```
+
+## Activation Kinetics - Correlation Networks
+```{r, out.width="45%"}
+#** Change column index for columns of interest
+corr_data <-  cor(df[4:23])
+pval_data = rcorr(as.matrix(df[4:23]))$P
+
+#uncomment these lines if you want to output a graphml file to be imported in other software such as Cytoscape. Change file name as necessary
+# cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 1., output_file = "activation_correlation_network.graphml")
+# cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 0.05, cell_type = "CD4", output_file = "activation_correlation_network_pval0.05_CD4.graphml")
+# cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 0.05, cell_type = "CD8", output_file = "activation_correlation_network_pval0.05_CD8.graphml")
+
+#** One may want to change function arguments depending on visualization goals
+g_CD4 <- cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 0.05, cell_type = "CD4")
+g_CD8 <- cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 0.05, cell_type = "CD8")
+
+#** Change graph title as necessary
+plot_network(g_CD4, "CD4, Activation")
+plot_network(g_CD8, "CD8, Activation")
+
+
+```
+
+------
+
+# Cytokine Experiments
+
+## Cytokine Kinetics - Import Data and Tidy
+
+```{r}
+#** Much of this code would need to be customized to different experiments
+df = read.csv("2021 06 25 Cytokine Kinetics Data.csv", check.names = FALSE)
+
+df = df %>% 
+  dplyr::filter(Timing != "NA") %>% 
+  mutate(Timepoint = case_when(
+    Treatment == "None" ~ 0,
+    Timing == "2 hours" ~ 2,
+    Timing == "1 hour" ~ 1,
+    Timing == "30 min" ~ 0.5,
+    Timing == "15 min" ~ 0.25,
+    Timing == "24 hours" ~ 24)) 
+
+df = df %>%
+  mutate(Treatment = factor(Treatment, 
+                            levels = c("None", "IFNb (10)", "IFNb (50)", "IFNb (200)", "IFNa (50)", "IL-4 (50)"))) %>% 
+  mutate(Timing = ifelse(as.character(Treatment) == "None", "0", as.character(Timing))) %>%
+  mutate(Timing = factor(Timing, 
+                         levels = c("0","15 min", "30 min", "1 hour", "2 hours", "24 hours")))
+
+ifnb <- df %>%
+  dplyr::filter(grepl("IFNb|None", Treatment))
+
+colnames(ifnb) <- gsub(" |/|[(]|[)]", '.', colnames(ifnb))
+colnames(ifnb) <- gsub("[-]", "neg", colnames(ifnb))
+colnames(ifnb) <- gsub("[\\+]", 'pos', colnames(ifnb))
+colnames(ifnb)
+  
+
+```
+
+## Cytokine Kinetics - Line Graphs
+
+```{r, out.width="40%"}
+#** specify which columns to plot
+cols_to_plot <- colnames(ifnb[,6:(length(ifnb)-1)])
+
+
+#pdf("IFNb time graphs w hline no leg.pdf", width = 8, height = 8)
+for (i in seq_along(cols_to_plot)) {
+  param <- cols_to_plot[i]
+
+  #compute mean value first
+  nonedf <- dplyr::filter(ifnb, Treatment == "None")
+  m <- mean(pull(nonedf, param))
+  
+  p <- ggplot(ifnb, aes_string(x="Timing", y=param, color="Treatment")) + 
+    stat_summary(geom = "point", fun = "mean", size = 1.7) +
+    geom_line(aes(group = Treatment), stat = "summary", fun = mean) +
+    geom_errorbar(stat = "summary", fun.data = mean_se, width = 0.15) + 
+    geom_line(aes(group = Treatment), stat = "summary", fun = mean) +
+    geom_hline(yintercept = m, linetype="dashed", color = "black") +
+    scale_color_manual(values = c("black", "darkorange", "red", "purple", "green")) +
+    xlab("") +
+    ylab("Frequency") +
+      ggtitle(param) +
+    theme_bw() +
+    theme(legend.position = "none") +
+  scale_y_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.1)))
+  print(p)
+}
+#dev.off()
+
+```
+
+
+## Cytokine Kinetics - Correlation Network
+
+```{r, out.width= "45%"}
+#** Change column index for columns of interest
+corr_data <- cor(df[6:29])
+pval_data = rcorr(as.matrix(df[6:29]))$P
+
+
+#uncomment these lines if you want to output a graphml file to be imported in other software such as Cytoscape. Change file name as necessary
+# cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 1., output_file = "cytokine_correlation_network.graphml")
+# cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 0.05, cell_type = "CD4", output_file = "cytokine_correlation_network_pval0.05_CD4.graphml")
+# cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 0.05, cell_type = "CD8", output_file = "cytokine_correlation_network_pval0.05_CD8.graphml")
+
+#** One may want to change function arguments depending on visualization goals
+g_CD4 <- cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 0.05, cell_type = "CD4")
+g_CD8 <- cor_net_f(corr_data,pval_data,corr_threshold = 0.0,pval_threshold = 0.05, cell_type = "CD8")
+
+#** Change graph title as necessary
+plot_network(g_CD4, "CD4, Cytokine Kinetics")
+plot_network(g_CD8, "CD4, Cytokine Kinetics")
+
+```
+
+
+## Cytokine Screening - Import and Tidy Data
+
+```{r}
+#** Much of this would need to be customized for use in a different experiment
+#read in the data
+df <- read.csv("2021 07 09 Cytokine Screening Data.csv", check.names = FALSE)
+
+#Factor columns
+#Here only include stimulations wanted in graphs, exclude unwanted ones
+df$Stimulation <- factor(df$Stimulation, c("None", "IL-1a", "IL-1b","IL-2 (50)",  "IL-2 (300)", "IL-4", "IL-5", "IL-6", "IL-7", "IL-8", "IL-9", "IL-10 (human)", "IL-10 (viral)", "IL-12", "IL-15", "IL-21", "IL-23", "IFNa",  "IFNb",  "IFNg", "TGFb", "TNF", "GM-CSF"))
+levels(df$Stimulation)
+
+#remove cells of plate where Stimulation is NA
+df <- df %>% 
+  dplyr::filter(Stimulation != "NA")
+
+df = arrange(df, Stimulation)
+colnames(df)
+
+#drop columns we don't want plotted
+drop_cols <- c("Live Cell Count", "Live Cell Frequency", "CD4+pSTAT1(S727)+", "CD4+pSTAT3(S727)+", "CD8+pSTAT1(S727)+", "CD8+pSTAT3(S727)+")
+df <- df[ , !(names(df) %in% drop_cols)]
+kbl(df[1:5,1:8]) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left", font_size = 8)
+
+long_df <- pivot_longer(df, `CD4+pSTAT1(S727)high`:length(df), names_to = "Analyte", values_to = "value")
+kbl(long_df[1:5,]) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left", font_size = 8)
+
+long_df = long_df %>% 
+  dplyr::filter(Stimulation != "NA")
+
+#need to fix the column names because they include characters R can't parse.
+df_n <- df
+#We need to replace a space, /, parentheses with "." in the column names, 
+  ##otherwise r can't parse the text later on.
+colnames(df_n) <- gsub(" |/|[(]|[)]", '.', colnames(df_n))
+colnames(df_n) <- gsub("[-]", "neg", colnames(df_n))
+colnames(df_n) <- gsub("[\\+]", 'pos', colnames(df_n))
+colnames(df_n)
+
+```
+
+## Cytokine Screening - Bar Graphs
+
+```{r, out.width="80%"}
+# first generate a color palette since there will be so many bars:
+
+# Use the package "Polychrome"
+# create your own color palette based on `seedcolors`
+col_pal = createPalette(23,  c("#000000", "#44AA99", "#AA4499", "#88CCEE", "#FDA900", "#268526", "#EE600D"))
+
+#Save the palette as a vector to get the names of the colors
+col_pal <- as.vector(col_pal)
+col_pal
+#For the sake of reproducable code, here is the color palette we generated:
+col_pal <- c("#4B474D", "#47AE9F", "#A33D94", "#88CDF0", "#FDA71C", "#1C8222", "#F36222", "#0D40FF", "#1CFD16", "#F40093", "#DF0DFF", "#E1EC2A", "#FBDCBD", "#8D322E", "#32409C", "#FFD2FF", "#FD0000", "#2EFFB5", "#FB32D6", "#CE8EFF", "#6D6200", "#1CAAFF", "#FE83B4")
+
+#View the palette
+swatch(col_pal)
+```
+
+Now make the graphs
+
+```{r, out.width="40%" ,warning=FALSE, message=FALSE, error=FALSE, results='hide', fig.keep='all'}
+
+levels(df_n$Stimulation)
+#My attempt to get multiple **'s for more significant values
+symnum.args <- list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1), symbols = c("****", "***", "**", "*", "ns"))
+
+#pdf("Cytokine Screening bar graphs.pdf", width = 8, height = 8)
+lapply(colnames(df_n[,3:length(df_n)]),function(i) ggplot(df_n, aes_string(x="Stimulation", y=i, fill = "Stimulation")) +
+  geom_bar(stat = "summary", fun = "mean") +
+    stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.4) +
+    scale_fill_manual(values = col_pal) +
+    theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 90, vjust = 1, hjust=1)) +
+  ylab("Frequency of Parent") +
+  ggtitle(i) +
+  stat_compare_means(method = "t.test", ref.group = "None", hide.ns = TRUE, label = "p.signif", symnum.args = symnum.args, p.adjust.method = "bonferroni"))
+#label = "p.format", cex = 1.7 <-- if you wanted written out values add this
+#dev.off()
+```
+
+
+
+## Cytokine Screening - Heatmap
+```{r, out.width="60%"}
+#*** Change pdf title and the columns to graph
+#pdf("Cytokine Screening heatmap.pdf", width = 8, height = 8)
+heatmap(scale(as.matrix(df[3:ncol(df)])), Rowv = NA, labRow = df$Stimulation, cexRow = 0.5, cexCol = 0.5)
+#dev.off()
+```
+
+
+------
+
+# Polarization Experiments
+
+## Polarizations - Import and Tidy Data
+
+```{r}
+#** Much of this would need to be customized for use in a different experiment
+##Read in flow data
+Polarization_data = read.csv("2020 07 17 T Cell Polarization Data.csv", check.names = FALSE)
+Polarization_data = Polarization_data %>% 
+  #select(-"Sample") %>% 
+  dplyr::filter(!is.na(Polarization)) %>% 
+  mutate(Timepoint = case_when(Time == "96 Hours" ~ 96,
+                             Time == "24 Hours" ~ 24,
+                             Time == "0.5 Hours" ~ 0.5))
+
+##Read in phenograph data
+pSTAT_phenographs = read.csv("2020 07 17 pSTAT Phenographs.csv", check.names = FALSE)
+pSTAT_phenographs$Polarization = factor(pSTAT_phenographs$Polarization, levels = c("None", "Th1", "Th2", "Th17", "iTreg"))
+pSTAT_phenographs = select(pSTAT_phenographs, -"Sample")
+pSTAT_phenographs= pSTAT_phenographs %>% 
+  dplyr::rename(Phenograph_01 = Phenograph_1,
+         Phenograph_02 = Phenograph_2,
+         Phenograph_03 = Phenograph_3,
+         Phenograph_04 = Phenograph_4,
+         Phenograph_05 = Phenograph_5,
+         Phenograph_06 = Phenograph_6,
+         Phenograph_07 = Phenograph_7,
+         Phenograph_08 = Phenograph_8,
+         Phenograph_09 = Phenograph_9)
+
+```
+
+## Plot pSTATs/Polarizatoins
+```{r, fig.height=4, fig.width=8}
+#** Much of this would need to be customized for use in a different experiment
+
+#List of data containing columns that will be "merged" in pivot_longer
+Parameter_columns = c("pSTAT1(Y701)+", "pSTAT1(S727)_high", "pSTAT1(S727)_low", "pSTAT1(S727)-", "pSTAT2(Y689)+", "pSTAT3(Y705)+", "pSTAT3(S727)_high", "pSTAT3(S727)_low",  "pSTAT3(S727)-", "pSTAT4(Y693)+", "pSTAT5(Y694)+", "pSTAT6(Y641)+")
+
+#Graph grouped by Polarization
+#pdf("STATs_by_Polarization.pdf", height = 3, width = 12)
+Polarization_data %>% 
+  dplyr::filter(Activation == "Yes") %>% 
+  select(-c("Live_Cell_Percent", "Live_Cell_Count", "Activation", "pSTAT1(S727)+", "pSTAT3(S727)+" )) %>% 
+  pivot_longer(cols = Parameter_columns, names_to = "Parameter") %>% 
+  ggplot(aes(x=Timepoint, y=value, color=Parameter)) +
+  stat_summary(geom = "point", fun.y = "mean", size = 3) +
+  geom_line(aes(group = Parameter), stat = "summary", fun = mean) +
+  geom_errorbar(stat = "summary", fun.data = mean_se, width = 3) +
+  facet_wrap(~ Polarization, nrow = 1) +
+  scale_color_brewer(palette = "Paired") +
+  xlab("Hours") +
+  ylab("Frequency") +
+  scale_x_continuous(breaks =  c(0.5, 24, 96), expand = expansion(mult = c(0,0.1))) +
+  scale_y_continuous(expand = expansion(mult = c(0,0)), limits = c(0,100)) +
+  theme_bw()
+#dev.off()
+
+```
+
+
+```{r, fig.height=4, fig.width=8}
+
+#Graph grouped by pSTATs
+#pdf("Polarizations_by_STATs.pdf", height = 4, width = 12)
+Polarization_data %>% 
+  dplyr::filter(Activation == "Yes") %>% 
+  select(-c("Live_Cell_Percent", "Live_Cell_Count", "Activation", "pSTAT1(S727)+", "pSTAT3(S727)+" )) %>% 
+  pivot_longer(cols = Parameter_columns, names_to = "Parameter") %>% 
+  ggplot(aes(x=Timepoint, y=value, color=Polarization)) +
+  stat_summary(geom = "point", fun.y = "mean", size = 3) +
+  geom_line(aes(group = Polarization), stat = "summary", fun = mean) +
+  geom_errorbar(stat = "summary", fun.data = mean_se, width = 3) +
+  facet_wrap(~ Parameter, nrow = 2) +
+  scale_color_manual(values = c("purple", "black", "blue", "red", "green")) +
+  xlab("Hours") +
+  ylab("Frequency") +
+  scale_x_continuous(breaks =  c(0.5, 24, 96), expand = expansion(mult = c(0,0.1))) +
+  scale_y_continuous(expand = expansion(mult = c(0,0))) +
+  theme_bw()
+#dev.off()
+
+rm(Parameter_columns)
+
+```
+
+## Polarizations - Plot Phenographs
+
+```{r, fig.height=4, fig.width=8}
+
+Phenograph_columns = c("Phenograph_01",  "Phenograph_02",  "Phenograph_03",  "Phenograph_04",  "Phenograph_05",  "Phenograph_06", "Phenograph_07", "Phenograph_08", "Phenograph_09",  "Phenograph_10", "Phenograph_11", "Phenograph_12", "Phenograph_13", "Phenograph_14")
+
+
+#Grouped by phenograph
+#pdf("STATs_by_Phenograph.pdf", height = 4, width = 12)
+pSTAT_phenographs %>% 
+  dplyr::filter(Activation == "Yes") %>% 
+  select(-c("Phenograph_15", "Phenograph_16", "Phenograph_17")) %>% 
+  pivot_longer(cols = Phenograph_columns, names_to = "Phenographs") %>% 
+  ggplot(aes(x=Timepoint, y=value, color=Polarization)) +
+  stat_summary(geom = "point", fun.y = "mean", size = 3) +
+  geom_line(aes(group = Polarization), stat = "summary", fun = mean) +
+  geom_errorbar(stat = "summary", fun.data = mean_se, width = 3) +
+  facet_wrap(~ Phenographs, nrow = 2) +
+  xlab("Hours") +
+  ylab("Frequency") +
+  scale_color_manual(values = c("black", "blue", "green", "red", "purple")) +
+  scale_x_continuous(breaks =  c(0.5, 24, 96), expand = expansion(mult = c(0,0.1))) +
+  scale_y_continuous(expand = expansion(mult = c(0,0))) +
+  theme_bw()
+#dev.off()
+
+rm(Phenograph_columns)
+
+```
+
+------
+
+
+# Rainbow Cloud Plots
+
+## Rainbow Cloud Plots - Data instructions and import 
+
+In this section:
+
+* Read in:
+  + concatenated fcs file
+  + phenocluster csv file (further instructions for access below)
+  + FMO fcs files
+
+
+How to get phenocluster csv file:
+
+* This file is part of the "metadata" within the large fcs output
+* Access by copying your acs file somewhere, then turning the extension from .acs to .zip
+* Turning the archive into a zip allows you to see all of the contents and component files. 
+* You can extract the pheno cluster derivative file (simple as a copy and paste into your working folder)
+* This file will have the naming convention: 
+  + "concat_file_name..ExtNode.csv.PhenoClusters.EPA.csv"
+
+
+Please note that all object names are called in later parts of the code, so changing them would make more work for you.
+
+
+**Read in the concatenated fcs and phenocluster csv**
+```{r}
+pstat_fcs <- read.FCS("concat_2020_07_17_polarization.fcs")
+pstat_pheno_clusters <- read.csv("concat_2020_07_17_polarization..ExtNode.csv.PhenoClusters.EPA.csv")
+```
+
+
+
+**Read in FMO fcs files and tidy**
+```{r}
+#*** Change the name of the FMO files, update the channel of interest, and the new name for the channel (the marker)
+#The function is executed for each FMO
+#sample_n takes a random sample to get 1000 events per FMO to reduce the file size of the graph to prevent rendering issues.
+
+
+FMO_f <- function(fcs_file,channel,marker,n_samples){
+  fcs_data <- read.FCS(fcs_file, emptyValue = FALSE)@exprs
+  fcs_data <- fcs_data[,channel]
+  
+  fcs_data <- as.data.frame(fcs_data[sample(1:length(fcs_data), n_samples, replace = n_samples>=length(fcs_data))])
+  colnames(fcs_data) <- marker
+  fcs_data[,"Channel"] <- marker
+  return(fcs_data)  
+}
+
+#fcs_data <- FMO_f(fcs_file,channel,marker,n_samples)
+
+#pSTAT1(S727) FMO
+FMO_pSTAT1S727_fcs <- FMO_f("FMO T cell Polarization pSTAT1 S727.fcs", "RL1-A", "pSTAT1(S727)", 1000)
+
+
+#pSTAT1(Y701) FMO
+FMO_pSTAT1Y701_fcs <- FMO_f("FMO T cell Polarization pSTAT1 Y701.fcs", "VL1-A", "pSTAT1(Y701)", 1000)
+
+#pSTAT2(Y689) FMO
+FMO_pSTAT2_fcs <- FMO_f("FMO T cell Polarization pSTAT2.fcs", "RL2-A", "pSTAT2(Y689)", 1000)
+
+#pSTAT3(S727) FMO
+FMO_pSTAT3S727_fcs <- FMO_f("FMO T cell Polarization pSTAT3 S727.fcs", "YL1-A", "pSTAT3(S727)", 1000)
+
+#pSTAT3(Y705) FMO
+FMO_pSTAT3Y705_fcs <- FMO_f("FMO T cell Polarization pSTAT3 Y705.fcs", "YL2-A",  "pSTAT3(Y705)", 1000)
+
+#pSTAT4 FMO
+FMO_pSTAT4_fcs <- FMO_f("FMO T cell Polarization pSTAT4.fcs", "BL1-A",  "pSTAT4(Y693)", 1000)
+
+#pSTAT5 FMO
+FMO_pSTAT5_fcs <- FMO_f("FMO T cell Polarization pSTAT5.fcs", "YL4-A",  "pSTAT5(Y694)", 1000)
+
+#pSTAT6 FMO
+FMO_pSTAT6_fcs <- FMO_f("FMO T cell Polarization pSTAT6.fcs", "BL3-A",  "pSTAT6(Y641)", 1000)
+
+#CD4 FMO
+#Missing CD4 FMO, so use LD Only sample
+FMO_CD4_fcs <- FMO_f("FMO T cell Polarization LD only.fcs", "VL3-A",  "CD4", 1000)
+
+#CD8 FMO
+#Missing CD8 FMO, so use LD Only sample
+FMO_CD8_fcs <- FMO_f("FMO T cell Polarization LD only.fcs", "VL4-A",  "CD8", 1000)
+
+
+```
+
+
+
+## Rainbow Cloud Plots - Data Cleaning and Prep for Graphing
+
+**Make and tidy up dataframes**
+
+* Combine data frames, remove empty columns, rename channels
+* Pivot data longer for graphing
+
+Things to change for a new data set are marked by #***
+```{r}
+#Merge phenograph cluster indicators with fcs file values
+#*** Here just change the object names, leave @exprs as is.
+pstat_fcs_w_clusters = cbind(pstat_fcs@exprs, pstat_pheno_clusters)
+
+#Make phenograph cluster indicators factors
+#*** Here change the phenograph code (RStudio's predictive text is great here)
+pstat_fcs_w_clusters$Phenograph_A1TL = as.factor(pstat_fcs_w_clusters$Phenograph_A1TL)
+
+colnames(pstat_fcs_w_clusters)
+
+#Drop empty channels (and viability)
+#*** Change channels based on your experiment
+drop_columns = c("RL3-A", "BL1-H", "BL3-H", "Event", "RL1-H", "RL2-H", "RL3-H", "VL1-H", "VL3-H", "VL4-H", "YL1-H",  "YL2-H", "YL4-H")
+
+#rename channels with markers
+#Remove phenograph rows that are "noise" (can look at phenograph data from layout editor, if all rows of a phenograph are a number smaller than 1, safe to assume noise only)
+#*** Change based on your data - need to change phenograph code, rows to drop, and specific channels/markers to rename.
+pstat_fcs_w_clusters = pstat_fcs_w_clusters %>% 
+  #Remove phenograph 15, 16, and 17 rows. Remember to change phenograph code.
+  dplyr::filter(Phenograph_A1TL != "15") %>%
+  dplyr::filter(Phenograph_A1TL != "16") %>%
+  dplyr::filter(Phenograph_A1TL != "17") %>%
+  dplyr::rename(`pSTAT4(Y693)` = `BL1-A`, 
+         `pSTAT6(Y641)` = `BL3-A`, 
+         `pSTAT1(Y701)` = `VL1-A`, 
+         `CD4` = `VL3-A`, 
+         `CD8` = `VL4-A`,
+         `pSTAT3(S727)` = `YL1-A`,
+         `pSTAT3(Y705)` = `YL2-A`,
+         `pSTAT5(Y694)` = `YL4-A`,
+         `pSTAT1(S727)` = `RL1-A`,
+         `pSTAT2(Y689)` = `RL2-A`,
+         `Phenograph` = `Phenograph_A1TL`) %>% 
+  select(-one_of(drop_columns), -"CD4", -"CD8")
+
+
+colnames(pstat_fcs_w_clusters)
+
+kbl(pstat_fcs_w_clusters[1:5,1:8]) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left", font_size = 10)
+
+```
+
+
+**Pivot data to long format**
+```{r}
+pstat_long_data = pstat_fcs_w_clusters %>% 
+  pivot_longer(cols = 7:14, names_to = "Channel", values_to = "values")
+
+#If the data frame is too big, and the graphs are taking too long to render, consider downsampling the data frame. 
+# Do this prior to turning the data to long so that the number in each parameter remain even
+
+```
+
+
+------
+
+## Rainbow Cloud Plots - Graph
+
+* Graph:
+  + facet wrap by cluster number
+  + color by channel
+  + plot FMO values as black on top for each corresponding channel. How to do this? Y-axis is "Channel", so make another column with an indicator of "FMO" or whatever channel (e.g. CD14) and color by this column. Will need to have the FMO values with the corresponding channel label in the "Channel" column in order for it to properly graph with that channel. 
+* Final dataframe needs columns for: 1) Phenograph cluster number, 2) Channel, 3) Channel Coloring, 4) Channel Value. Each row is a cell. 
+
+Note that generating these graphs can take a few minutes due to the volume of data we are trying to graph at once. Graphing without the FMO's can be helpful to deal with any formatting issues and troubleshoot since there are just fewer things on the graph.
+
+**Graph values without FMOs**
+```{r, cache=TRUE, fig.height=5, fig.width=8}
+#Graph channel values in each phenograph
+
+ggplot(pstat_long_data, aes(x=values, y=Channel, color=Channel)) +
+  geom_jitter(alpha = 0.02, height = 0.05, size = 0.7) +
+  theme_classic() +
+  theme(legend.position="none", axis.text.y = element_text(size = 5)) +
+  xlim(0,30000) +
+  xlab("") +
+  facet_wrap(~Phenograph)
+
+```
+
+
+
+**Add the FMOs to the graph**
+```{r, warning=FALSE, cache=TRUE, fig.height=5, fig.width=8}
+#*** Change the ggsave file name, and remove the # for it to actually save. Can also change the file extension based on your needs.
+# If you have fewer events increase the alpha value. This very small value is for a large number of events (many overlapping points)
+
+#Plot
+ggplot(pstat_long_data, aes(x=values, y=Channel, color=Channel)) +
+  geom_jitter(alpha = 0.02, height = 0.05, size = 0.6) +
+  scale_y_discrete(limits=rev) +
+  #FMOs each are added individually
+  geom_jitter(data = FMO_pSTAT1S727_fcs, aes(x=`pSTAT1(S727)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT1Y701_fcs, aes(x=`pSTAT1(Y701)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT2_fcs, aes(x=`pSTAT2(Y689)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT3S727_fcs, aes(x=`pSTAT3(S727)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT3Y705_fcs, aes(x=`pSTAT3(Y705)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT4_fcs, aes(x=`pSTAT4(Y693)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT5_fcs, aes(x=`pSTAT5(Y694)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT6_fcs, aes(x=`pSTAT6(Y641)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  #geom_jitter(data = FMO_CD4_fcs, aes(x=`CD4`, y=Channel), color = "black", alpha = 0.02, height = 0.05, size = 0.7) +
+  #geom_jitter(data = FMO_CD8_fcs, aes(x=`CD8`, y=Channel), color = "black", alpha = 0.02, height = 0.05, size = 0.7) 
+  theme_classic() +
+  theme(legend.position="none", axis.text.y = element_text(size = 6), axis.text.x = element_text(size = 6.5)) +
+  xlim(0,30000) +
+  xlab("") +
+  facet_wrap(~Phenograph)
+
+#ggsave("labeled_pSTAT_Rainbow_Cloud_Plot.png", dpi = 600, width = 8, height = 5, units = "in")
+
+```
+
+
+We imported the plot into Illustrator for final formatting. To get around the issue of so many points to render on a pdf, we saved just the basic image as a png and added everything else back in using Illustrator.
+
+```{r, warning=FALSE, cache=TRUE, fig.height=5, fig.width=6}
+ggplot(pstat_long_data, aes(x=values, y=Channel, color=Channel)) +
+  geom_jitter(alpha = 0.02, height = 0.05, size = 0.6) +
+  scale_y_discrete(limits=rev) +
+  #FMOs
+  geom_jitter(data = FMO_pSTAT1S727_fcs, aes(x=`pSTAT1(S727)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT1Y701_fcs, aes(x=`pSTAT1(Y701)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT2_fcs, aes(x=`pSTAT2(Y689)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT3S727_fcs, aes(x=`pSTAT3(S727)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT3Y705_fcs, aes(x=`pSTAT3(Y705)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT4_fcs, aes(x=`pSTAT4(Y693)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT5_fcs, aes(x=`pSTAT5(Y694)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  geom_jitter(data = FMO_pSTAT6_fcs, aes(x=`pSTAT6(Y641)`, y=Channel), color = "black", alpha = 0.01, height = 0.05, size = 0.6) +
+  #geom_jitter(data = FMO_CD4_fcs, aes(x=`CD4`, y=Channel), color = "black", alpha = 0.02, height = 0.05, size = 0.7) +
+  #geom_jitter(data = FMO_CD8_fcs, aes(x=`CD8`, y=Channel), color = "black", alpha = 0.02, height = 0.05, size = 0.7) 
+  theme_bw() +
+  theme(legend.position="none",
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        strip.text.x = element_blank(),
+        panel.spacing.y = unit(1, "lines")) +
+  xlim(0,30000) +
+  xlab("") +
+  facet_wrap(~Phenograph)
+#ggsave("no_lab_pSTAT_Rainbow_Cloud_Plot_2020_07_17.png", dpi = 600, width = 6, height = 5, units = "in")
+```
+
