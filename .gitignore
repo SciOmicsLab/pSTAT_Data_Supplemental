@@ -37,3 +37,12 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# Folders created by this project
+.config/
+.local/
+Master-pSTAT-R-codes_cache/
+Figs/
+.DS_Store
+Master-pSTAT-R-codes.log
+Master-pSTAT-R-codes.tex

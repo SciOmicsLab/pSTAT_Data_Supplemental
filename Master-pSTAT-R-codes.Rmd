@@ -2,10 +2,13 @@
 title: "Master pSTAT codes"
 author: "Emily Monk and David Woods"
 date: "9/29/2021"
-output: 
+output:
   html_document:
-    toc: true
+    toc: yes
     toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
 ---
 
 # Introducation
@@ -23,7 +26,7 @@ This code can be run with the data in our experiments without changing anything.
 This code can also be used with similar data by changing parameters specified in each code chunk. 
 
 ```{r}
-#setwd("~/The University of Colorado Denver/SciOmics Lab - Documents/Projects/pSTAT/Manuscript/Data for R code")
+
 ```
 
 ```{r, global-options, include=FALSE}
@@ -53,6 +56,7 @@ library(igraph) #visualizes the correlation networks
 ## Activation Kinetics - Import Data and Tidy 
 
 ```{r}
+
 #read in the data, we used an excel file here with multiple sheets
 df <- read.csv("2021 07 02 Activation Kinetics Data.csv", check.names = FALSE)
 
@@ -444,7 +448,7 @@ heatmap(scale(as.matrix(df[3:ncol(df)])), Rowv = NA, labRow = df$Stimulation, ce
 ```{r}
 #** Much of this would need to be customized for use in a different experiment
 ##Read in flow data
-Polarization_data = read.csv("2020 07 17 T Cell Polarization Data.csv", check.names = FALSE)
+Polarization_data = read.csv("2020 07 17 T cell Polarization Data.csv", check.names = FALSE)
 Polarization_data = Polarization_data %>% 
   #select(-"Sample") %>% 
   dplyr::filter(!is.na(Polarization)) %>% 
