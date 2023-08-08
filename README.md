@@ -1,4 +1,9 @@
 # pSTAT_Data_Supplemental
+
+Simultaneous assessment of eight phosphorylated STAT residues in T-cells by flow cytometry
+Emily Monk, Melinda Vassallo, Paulo Burke, Jeffrey S. Weber, Pratip Chattopadhyay, David M. Woods
+bioRxiv 2021.11.22.469156; doi: https://doi.org/10.1101/2021.11.22.469156
+
 Data and R analysis for Simultaneous assessment of eight phosphorylated STAT residues in T-cells by flow cytometry
 
 ## System Requirements
